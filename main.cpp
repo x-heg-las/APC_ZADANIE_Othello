@@ -46,9 +46,10 @@ const char BLACK_CHIP = 'X';
 const char WHITE_CHIP = 'O';
 const char EMPTY_FIELD = '-';
 const size_t BOARD_SIZE = 8;
-const int8_t NEIGHBOURS[] = { 1, 7, 8, 9, -1,  7, -8, -9 };
+const int32_t INFI = 400;
+const int8_t NEIGHBOURS[] = { 1, 7, 8, 9, -1, -7, -8, -9 };
 const std::unordered_map<char, std::set<int8_t>> MOVE_CLASSES{
-	{'A', { 1, 7, 8, 9, -1, 7, -8, -9 }},
+	{'A', { 1, 7, 8, 9, -1,-7, -8, -9 }},
 	{'B', { 1, 8, 9,}},
 	{'C', {1, 7, 8, 9, -1}},
 	{'D', {7, 8, -1}},
@@ -58,7 +59,8 @@ const std::unordered_map<char, std::set<int8_t>> MOVE_CLASSES{
 	{'H', {-8, -7, 1}},
 	{'I', {-8, -7, 1, 8, 9}}
 };
-const std::vector<char> ALLOWED_MOVES{'B', 'C','C','C','C','C','C','D',
+const std::vector<char> ALLOWED_MOVES{
+'B','C','C','C','C','C','C','D',
 'I','A','A','A','A','A','A','E',
 'I','A','A','A','A','A','A','E',
 'I','A','A','A','A','A','A','E',
@@ -67,14 +69,15 @@ const std::vector<char> ALLOWED_MOVES{'B', 'C','C','C','C','C','C','D',
 'I','A','A','A','A','A','A','E',
 'H','G','G','G','G','G','G','F'
 };
-const std::vector<int8_t> FIELD_VALUES{15,0,2,2,2,2,0,15,
-0,-1,0,0,0,0,-1,0,
-2,0,3,2,2,3,0,2,
-2,0,2,3,3,2,0,2,
-2,0,2,3,3,2,0,2,
-2,0,3,2,2,3,0,2,
-0,-1,0,0,0,0,-1,0,
-15,0,2,2,2,2,0,15,
+const std::vector<int8_t> FIELD_VALUES{
+99,-8,8,6,6,8,-8,99,
+-8,-24,-4,-3,-3,-4,-24,-8,
+8,-4,7,4,4,7,-4,8,
+6,-3,4,0,0,4,-3,6,
+6,-4,4,0,0,4,-3,6,
+8,-3,7,4,4,7,-4,8,
+-8,-24,-4,-3,-4,-3,-24,-8,
+99,-8,8,6,6,8,-8,99,
 };
 
 size_t gameTime = 0;
@@ -186,7 +189,7 @@ auto findAvailableMoves(const std::string& board, Player player, std::pair<uint8
 {
 	char token = 0, enemyToken = 0;
 	moveOption(player, token, enemyToken);
-	std::pair<std::vector<uint8_t>, std::unordered_map<int8_t, int8_t >[64]> moves;
+	std::pair<std::set<uint8_t>, std::unordered_map<int8_t, int8_t >[64]> moves;
 
 	for (uint8_t position = 0; position < board.length(); ++position)
 	{
@@ -216,7 +219,7 @@ auto findAvailableMoves(const std::string& board, Player player, std::pair<uint8
 					if (length > 0 && board.at(tempPosition) == token)
 					{
 						moves.second[position][direction] = length;
-						moves.first.push_back(position);
+						moves.first.insert(position);
 					}
 					else if (length > 0 && board.at(tempPosition) == EMPTY_FIELD)
 					{
@@ -230,7 +233,7 @@ auto findAvailableMoves(const std::string& board, Player player, std::pair<uint8
 	return moves;
 }
 
-auto analyzeMove(const std::string& board, uint8_t move, Player player, std::pair<uint8_t, uint8_t>& tokens)
+auto analyzekMove(const std::string& board, uint8_t move, Player player, std::pair<uint8_t, uint8_t>& tokens)
 {
 	char token = 0, enemyToken = 0;
 	moveOption(player, token, enemyToken);
@@ -272,31 +275,100 @@ auto analyzeMove(const std::string& board, uint8_t move, Player player, std::pai
 	return moves;
 }
 
-std::pair<int8_t, std::string> flip(const std::string& board, int8_t availableMoves, int8_t move, const std::unordered_map<int8_t, int8_t>& directions)
+char getToken(Player player)
 {
-	int8_t value = (FIELD_VALUES.at(move)) + availableMoves;
+	if (player == Player::BLACK)
+	{
+		return BLACK_CHIP;
+	}
+	else if (player == Player::WHITE)
+	{
+		return WHITE_CHIP;
+	}
+	return EMPTY_FIELD;
+}
+
+std::pair< std::pair<std::set<size_t>, std::set<size_t>>, int32_t> mobility(const std::string& board)
+{
+	//move options for WHITE and BLACK respectively
+	std::pair<std::set<size_t>, std::set<size_t>> positions;
+	int8_t stability[64] = { 1 };
+	int32_t stabilityRate = 0;
+	for (size_t i = 0; i < board.length(); ++i)
+	{
+		for (const auto& direction : MOVE_CLASSES.at(ALLOWED_MOVES.at(i)))
+		{
+			if (board.at(i) != getToken(appPlayer) && stability[i] == 1)
+			{
+				stability[i] = 0;
+			}
+			if (board.at(i) == EMPTY_FIELD)
+			{
+				char token = 0;
+				int32_t tempPosition = static_cast<int32_t>(i) + direction;
+				token = board.at(tempPosition);
+				if (token == EMPTY_FIELD)
+				{
+					continue;
+				}
+				int8_t length = 0;
+				while (board.at(tempPosition) != EMPTY_FIELD && board.at(tempPosition) == token &&
+					MOVE_CLASSES.at(ALLOWED_MOVES.at(tempPosition)).find(direction) != std::end(MOVE_CLASSES.at(ALLOWED_MOVES.at(tempPosition))))
+				{
+					++length;
+					tempPosition += direction;
+				}
+				if (length > 0 && board.at(tempPosition) != token && board.at(tempPosition) != EMPTY_FIELD)
+				{
+					if (token == getToken(appPlayer))
+					{
+						for (int j = 1; j <= length; ++j)
+						{
+							stability[i + (direction * j)] = -1;
+						}
+					}
+					if (token == BLACK_CHIP)
+					{
+						positions.first.insert(i);
+					}
+					else
+					{
+						positions.second.insert(i);
+					}
+				}
+			}
+		}
+	}
+	for (const auto field : stability)
+	{
+		stabilityRate += field;
+	}
+	return {positions, stabilityRate};
+}
+
+std::pair<int8_t, std::string> flip(const std::string& board, Player player, int8_t move, const std::unordered_map<int8_t, int8_t>& directions)
+{
 	std::string newBoard = board;
 	char curToken = 0, enemyToken = 0;
-	moveOption(appPlayer, curToken, enemyToken);
-
+	moveOption(player, curToken, enemyToken);
+	
+	//board after move is applied
 	for (auto& entry : directions)
 	{
 		for (int8_t i = 0; i <= entry.second; ++i)
 		{
 			newBoard.at(move + (i * entry.first)) = curToken;
 		}
-		//TODO : uprav vypocet metriky
 	}
-	return { value, newBoard };
+	return { FIELD_VALUES.at(move), newBoard };
 }
 
-
-int8_t evaluate(const std::string& board)
+int32_t evaluate(const std::string& board)
 {
-	double mySpots = 0, enemySpots = 0;
+
 	char myToken = 0, enemyToken = 0;
 	moveOption(appPlayer, myToken, enemyToken);
-	for (size_t i = 0; i < board.length(); ++i)
+	/*for (size_t i = 0; i < board.length(); ++i)
 	{
 		if (board.at(i) == myToken)
 		{
@@ -306,9 +378,18 @@ int8_t evaluate(const std::string& board)
 		{
 			enemySpots += FIELD_VALUES.at(i);
 		}
+	}*/
+	auto stabilityMetric = mobility(board);
+	int32_t mobilityMetric = 0;
+	if (appPlayer == Player::BLACK)
+	{
+		mobilityMetric = static_cast<int32_t>(stabilityMetric.first.first.size() - stabilityMetric.first.second.size());
 	}
-	double ratio = ((mySpots - enemySpots) / (mySpots + enemySpots)) * 100;
-	return static_cast<int8_t>(ratio);
+	else
+	{
+		mobilityMetric = static_cast<int32_t>(stabilityMetric.first.second.size() - stabilityMetric.first.first.size());
+	}
+	return stabilityMetric.second + mobilityMetric;
 	
 }
 
@@ -318,9 +399,10 @@ int32_t findBestMove(const std::string& state, Player currentPlayer, int32_t dep
 	std::pair<uint8_t, uint8_t> tokens(static_cast<uint8_t>(0), static_cast<uint8_t>(0)); //player token and enemy token count
 
 	//ends if leaf node or the state was already discovered
-	if (depth == 0 || (transpositionTable.contains(state) && transpositionTable[state].iteration == iteration))// || (!running.load()))
+	if (depth == 0 ||
+		(transpositionTable.contains(state) && transpositionTable[state].iteration == iteration && ((transpositionTable[state].myTurn && currentPlayer == appPlayer) || (!transpositionTable[state].myTurn && currentPlayer != appPlayer))))// || (!running.load()))
 	{
-		return evaluate(state);
+		return evaluate(state) + depth;
 	}
 
 	State newState;
@@ -332,7 +414,7 @@ int32_t findBestMove(const std::string& state, Player currentPlayer, int32_t dep
 		for (const auto& move : moves.first)
 		{
 			//nodes.insert(evaluate(state, currentPlayer, move, moves.second[move], tokens));
-			auto flipped = (flip(state, static_cast<int8_t>(moves.first.size()), move, moves.second[move]));
+			auto flipped = (flip(state, currentPlayer, move, moves.second[move]));
 			newState.moves.insert(flipped);
 		}
 	}
@@ -347,10 +429,10 @@ int32_t findBestMove(const std::string& state, Player currentPlayer, int32_t dep
 	{
 		newState.myTurn = true;
 		transpositionTable[state] = newState;
-		int32_t value = INT_MIN;
+		int32_t value = -INFI - depth;
 		for (auto reversedIt = transpositionTable[state].moves.rbegin(); reversedIt!= transpositionTable[state].moves.rend(); ++reversedIt)
 		{
-			value = std::max(value, findBestMove(reversedIt->second, enemy, depth - 1, iteration, alpha, beta, transpositionTable));
+			value = std::max(value, reversedIt->first + findBestMove(reversedIt->second, enemy, depth - 1, iteration, alpha, beta, transpositionTable));
 			alpha = std::max(alpha, value);
 			if (value >= beta)
 			{
@@ -363,10 +445,10 @@ int32_t findBestMove(const std::string& state, Player currentPlayer, int32_t dep
 	{
 		newState.myTurn = false;
 		transpositionTable[state] = newState;
-		int32_t value = INT_MAX;
+		int32_t value = INFI + depth;
 		for (const auto& child : transpositionTable[state].moves)
 		{
-			value = std::min(value, findBestMove(child.second, enemy, depth - 1, iteration, alpha, beta, transpositionTable));
+			value = std::min(value, child.first + findBestMove(child.second, enemy, depth - 1, iteration, alpha, beta, transpositionTable));
 			beta = std::min(beta, value);
 			if(value <= alpha)
 			{
@@ -409,15 +491,18 @@ std::string makeMove(const std::string& command)
 		enemy = Player::WHITE;
 	}
 
-	std::clog << running.load() << std::endl;
-	for (uint8_t depth = 7, iteration = 0; depth < 8; depth += 4, iteration++)
+	for (auto a : availableMoves.first)
+	{
+		std::cout << std::to_string(a) << ", ";
+	}
+	for (uint8_t depth = 10, iteration = 0; depth < 11 && running.load(); depth += 4, iteration++)
 	{
 		std::clog << availableMoves.first.size() << std::endl;
 		for (const auto& move : availableMoves.first)
 		{
-			auto nextStep = flip(args.at(1), static_cast<int8_t>(availableMoves.first.size()), move, availableMoves.second[move]);
+			auto nextStep = flip(args.at(1), appPlayer, move, availableMoves.second[move]);
 			std::clog << nextStep.second << std::endl;
-			auto value = findBestMove(nextStep.second, enemy, depth, iteration, INT_MIN, INT_MAX, transpositionTable);
+			auto value = findBestMove(nextStep.second, enemy, depth, iteration, -INFI, INFI, transpositionTable);
 			if (value > best)
 			{
 				best = value;
@@ -425,39 +510,41 @@ std::string makeMove(const std::string& command)
 			}
 		}
 	}
+	std::clog << "done" << std::endl;
 	return MOVES_STRINGS.at(nextMove);
 }
 
+
+
 void timerThread()
 {
-	std::chrono::seconds playTime(gameTime);
+	std::chrono::milliseconds playTime((gameTime * 1000) - 100);
 	std::unique_lock<std::mutex> lock(initMutex);
 	//waits until the timer is initialized during START operation
 	initCv.wait(lock, [] {return error.load() || initialized.load() || stop.load(); });
 	std::unique_lock<std::mutex> waitLock(waitMutex);
 	if (!error.load() && initialized.load())
 	{
-		
+		running.store(true);
+		waitCv.notify_one();
 		waitCv.wait_for(waitLock, playTime, []
 		{
-			running.store(true);
 			return (error.load() || stop.load());
 		});
 		running.store(false);
+		waitLock.unlock();
+		waitCv.notify_one();
 	}
-	waitLock.unlock();
 }
 
 int main()
 {
 	std::string command;
-
 	while (std::getline(std::cin, command))
 	{
 		try
 		{
 			error.store(false);
-			std::thread timer(timerThread);
 			std::string result;
 			switch (parseCommand(command))
 			{
@@ -473,34 +560,31 @@ int main()
 					}
 					break;
 				case Command::MOVE:
+				{
+					std::thread timer(timerThread);
 
-				//{
-				//	//wait until the timer is set
-				//	std::unique_lock<std::mutex> lock(waitMutex);
-				//	waitCv.wait(lock, [] {return running.load(); });
-				//}
+					{
+						//wait until the timer is set
+						std::unique_lock<std::mutex> lock(waitMutex);
+						waitCv.wait(lock, [] {return running.load(); });
+					}
 
 					result = makeMove(command);
+					stop.store(true);
+					waitCv.notify_all();
+					if (timer.joinable())
+					{
+						timer.join();
+					}
 					break;
+				}
 				case Command::ERR:
 					error = true;
 					std::clog << "Command error" << std::endl;
 					return 1;
 					break;
 				case Command::STOP:
-					waitCv.notify_all();
-					if (timer.joinable())
-					{
-						timer.join();
-					}
 					return 0;
-			}
-
-			stop.store(true);
-			if (timer.joinable())
-			{
-				waitCv.notify_one();
-				timer.join();
 			}
 			std::cout << result << std::endl;
 		}
